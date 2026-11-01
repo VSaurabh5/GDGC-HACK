@@ -5,18 +5,10 @@
 
 const { SYSTEM_PROMPT, buildUserMessage } = require("./prompt");
 
-// ── Provider config (set LLM_PROVIDER=groq|gemini and LLM_MODEL in .env) ──────
-const PROVIDER   = (process.env.LLM_PROVIDER || "groq").toLowerCase();
-const MODEL      = process.env.LLM_MODEL      || "llama-3.3-70b-versatile";
-
-// Endpoint map — add Gemini (OpenAI-compat) URL here when you switch.
-const ENDPOINTS = {
-  groq:   "https://api.groq.com/openai/v1/chat/completions",
-  gemini: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-};
-
-const ENDPOINT = ENDPOINTS[PROVIDER] || ENDPOINTS.groq;
-const API_KEY  = process.env.GROQ_API_KEY; // Gemini key var can be added later
+// ── Config (override LLM_MODEL in .env to swap models) ───────────────────────
+const MODEL    = process.env.LLM_MODEL || "llama-3.3-70b-versatile";
+const ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
+const API_KEY  = process.env.GROQ_API_KEY;
 
 // Max tokens: ~60 tokens per car + overhead is safe for 20 cars.
 const MAX_TOKENS = 1600;

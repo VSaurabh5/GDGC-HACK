@@ -66,6 +66,6 @@ app.post("/api/decide", async (req, res) => {
 // ── Start ──────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`[server] listening on http://localhost:${PORT}`);
-  console.log(`[server] provider=${process.env.LLM_PROVIDER || "groq"} model=${process.env.LLM_MODEL || "llama-3.3-70b-versatile"}`);
+  console.log(`[server] model=${process.env.LLM_MODEL || "llama-3.3-70b-versatile"}`);
 });
 
