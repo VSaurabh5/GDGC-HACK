@@ -221,11 +221,61 @@
                     if (a.x1 < b.x2 && a.x2 > b.x1 && a.y1 < b.y2 && a.y2 > b.y1) {
                         const key = cars[i].id + "-" + cars[j].id;
                         now.add(key);
-                        if (!touching.has(key)) hud.collisions++;
+                        if (!touching.has(key)) {
+                            hud.collisions++;
+                            const A = cars[i], B = cars[j];
+                            console.log(
+                                (A.dir === B.dir && A.lane === B.lane ? "SAME-LANE" : A.dir === B.dir ? "SIDE-LANE" : "CROSS"),
+                                A.dir + A.lane, "s=" + Math.round(A.s), "v=" + Math.round(A.v),
+                                "|", B.dir + B.lane, "s=" + Math.round(B.s), "v=" + Math.round(B.v),
+                                "| light:", getLightState("N"), getLightState("E")
+                            );
+                        }
                     }
                 }
             }
             touching = now;
+        }
+        // ---- Sensors (local data only, no x/y) ----
+        const SIDE_RANGE = 60;   // how far along the road side sensors can see (px)
+
+        function nearest(list, key) {
+            let best = null;
+            for (const o of list) if (!best || key(o) < key(best)) best = o;
+            return best;
+        }
+
+        function senseCar(c) {
+            const sameLane = cars.filter(o => o !== c && o.dir === c.dir && o.lane === c.lane);
+
+            // front: nearest car ahead in my lane
+            const f = nearest(sameLane.filter(o => o.s > c.s), o => o.s - c.s);
+            const front = f ? { dist: Math.round(f.s - L - c.s), dv: Math.round(f.v - c.v) } : null;
+
+            // rear: nearest car behind in my lane (dv positive = it is catching up)
+            const r = nearest(sameLane.filter(o => o.s < c.s), o => c.s - o.s);
+            const rear = r ? { dist: Math.round(c.s - L - r.s), dv: Math.round(r.v - c.v) } : null;
+
+            // side: car in the neighbouring lane of my own direction
+            const outer = (c.dir === "N" || c.dir === "S") ? 0 : 1;   // outer lane = right-hand lane
+            const sideLane = 1 - c.lane;
+            const beside = cars.filter(o => o !== c && o.dir === c.dir && o.lane === sideLane
+                && Math.abs(o.s - c.s) < SIDE_RANGE);
+            const b = nearest(beside, o => Math.abs(o.s - c.s));
+            const side = b ? { dist: Math.max(0, Math.round(Math.abs(b.s - c.s) - L)) } : null;
+            const mineIsOuter = c.lane === outer;
+            const left = mineIsOuter ? side : null;    // outer lane: neighbour is on my left
+            const right = mineIsOuter ? null : side;   // inner lane: neighbour is on my right
+
+            // signal: only until I cross the stop line
+            const dist = STOP_S - c.s;
+            const signal = dist > 0 ? { state: getLightState(c.dir), distToStop: Math.round(dist) } : null;
+
+            return { id: c.id, speed: Math.round(c.v), front, rear, left, right, signal };
+        }
+
+        function buildSensors() {
+            return cars.map(senseCar);
         }
 
         // ---- Update and draw cars ----
@@ -234,7 +284,6 @@
         function update(dt) {
             spawnTimer += dt;
             if (spawnTimer > 1) { spawnTimer = 0; spawnCar(); }
-            for (const c of cars) c.action = decideTest(c);
             for (const c of cars) applyPhysics(c, dt);
             checkCollisions();
             cars = cars.filter(c => {
@@ -259,7 +308,55 @@
                 }
                 ctx.restore();
             }
-        }// ---- Main loop ----
+        }
+        // ---- Decision layer (mock now, LLM in Step 6b) ----
+        function mockDecide(sensors) {
+            return sensors.map(s => {
+                const v = s.speed;
+                let brake = 0;
+
+                if (s.front) {
+                    const gap = s.front.dist, vf = v + s.front.dv;
+                    if (gap < 12) return v > vf ? { id: s.id, action: "BRAKE", intensity: 1 } : { id: s.id, action: "MAINTAIN" };
+                    if (v > vf) brake = Math.max(brake, ((v * v - vf * vf) / (2 * (gap - 8))) / (DEC * 0.8));
+                }
+
+                if (s.signal && s.signal.state !== "GREEN" && s.signal.distToStop > 0) {
+                    const dist = s.signal.distToStop;
+                    const raw = (v * v) / (2 * Math.max(dist - 4, 0.5)) / DEC;
+                    if (!(s.signal.state === "YELLOW" && raw > 1)) brake = Math.max(brake, raw / 0.8);
+                    if (dist < 8 && v < 10) return { id: s.id, action: "BRAKE", intensity: 1 };
+                }
+
+                if (brake > 0.03) return { id: s.id, action: "BRAKE", intensity: Math.min(1, brake) };
+                return { id: s.id, action: "ACCELERATE", throttle: 0.8 };
+            });
+        }
+
+        // Step 6b will replace this body with the real LLM call.
+        async function getActions(sensors) {
+            await new Promise(r => setTimeout(r, 200));   // fake API delay
+            return { actions: mockDecide(sensors) };
+        }
+
+        let busy = false;
+        async function decisionTick() {
+            if (busy || cars.length === 0) return;
+            busy = true;
+            const t0 = performance.now();
+            try {
+                const res = await getActions(buildSensors());
+                hud.latencyMs = performance.now() - t0;
+                for (const a of res.actions) {
+                    const c = cars.find(x => x.id === a.id);
+                    if (c) c.action = a;
+                }
+            } catch (e) {
+                console.error("Decision error:", e);
+            }
+            busy = false;
+        }
+        setInterval(decisionTick, 200);// ---- Main loop ----
         function frame(t) {
             const dt = Math.min((t - lastT) / 1000, 0.05);
             lastT = t;
