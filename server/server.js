@@ -7,12 +7,6 @@
 require("dotenv").config();
 const express           = require("express");
 const cors              = require("cors");
- * Reads config from .env (GROQ_API_KEY, PORT, LLM_PROVIDER, LLM_MODEL).
- */
-
-require("dotenv").config();
-const express       = require("express");
-const cors          = require("cors");
 const { getLLMActions } = require("./llm");
 
 const app  = express();
@@ -55,14 +49,6 @@ app.post("/api/decide", async (req, res) => {
   try {
     const { actions, latencyMs, error } = await getLLMActions(cars);
 
-    // One log line per request — no API key, no sensitive data.
-    const hadFallback = actions.some((a) => a.fallback);
-    console.log(
-      `[decide] cars=${cars.length} latency=${latencyMs}ms` +
-      (error       ? ` error="${error}"`       : "") +
-      (hadFallback ? " (fallback used)"        : "")
-    );
-
     // Always 200 so the frontend keeps running even if the LLM failed.
     return res.json({ actions, latencyMs, ...(error ? { error } : {}) });
   } finally {
@@ -78,7 +64,3 @@ app.listen(PORT, () => {
   console.log(`[server] listening on http://localhost:${PORT}`);
   console.log(`[server] provider=${provider} model=${model} timeout=${timeout}ms`);
 });
-  console.log(`[server] listening on http://localhost:${PORT}`);
-  console.log(`[server] model=${process.env.LLM_MODEL || "llama-3.3-70b-versatile"}`);
-});
-
