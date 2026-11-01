@@ -5,7 +5,6 @@
 
 const { SYSTEM_PROMPT, buildUserMessage } = require("./prompt");
 
-// ── Config (override LLM_MODEL in .env to swap models) ───────────────────────
 const MODEL    = process.env.LLM_MODEL || "llama-3.3-70b-versatile";
 const ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 const API_KEY  = process.env.GROQ_API_KEY;
