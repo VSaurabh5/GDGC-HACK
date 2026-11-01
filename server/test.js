@@ -5,6 +5,11 @@
  * Scenarios:
  *   Car 0 — RED light close ahead, stopped traffic in front
  *   Car 1 — Car tailgating very close behind, car ahead braking hard
+ * Run AFTER starting the server: node server/test.js
+ *
+ * Scenarios:
+ *   Car 0 — RED light close ahead, stopped traffic in front
+ *   Car 1 — Car tailgating very close behind, open road ahead
  *   Car 2 — GREEN light, clear road on all sides
  */
 
@@ -49,6 +54,7 @@ async function main() {
   console.log(`model      : ${MODEL}`);
   console.log(`endpoint   : ${ENDPOINT}`);
   console.log(`cars sent  : ${testCars.length}\n`);
+  console.log("Sending test request to", ENDPOINT, "...\n");
 
   try {
     const res  = await fetch(ENDPOINT, {
@@ -77,6 +83,8 @@ async function main() {
       console.log("\n✓ All actions returned by LLM.");
     }
 
+    console.log("\nActions:");
+    data.actions.forEach((a) => console.log(" ", JSON.stringify(a)));
   } catch (err) {
     console.error("Request failed:", err.message);
     console.error("Is the server running?  →  node server/server.js");
@@ -100,3 +108,8 @@ curl -s -X POST http://localhost:3000/api/decide \
 
  ──────────────────────────────────────────────────────────────────────────────
 */
+  }' | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); console.log(JSON.stringify(JSON.parse(d),null,2))"
+
+ ──────────────────────────────────────────────────────────────────────────────
+*/
+

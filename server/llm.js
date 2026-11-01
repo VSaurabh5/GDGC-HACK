@@ -138,6 +138,42 @@ async function getLLMActions(sensorArray) {
     const errMsg    = classifyError(err, null, null);
     console.error(`[llm] ${PROVIDER}:`, errMsg);
     return { actions: ids.map(fallbackAction), latencyMs, error: errMsg };
+  let rawText  = "";
+  let httpErr  = null;
+
+  try {
+    const res = await fetch(ENDPOINT, {
+      method:  "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${API_KEY}`,
+      },
+      body,
+      signal: controller.signal,
+    });
+
+    const latencyMs = Date.now() - t0;
+    clearTimeout(timer);
+
+    // Handle HTTP-level errors (429, 5xx, etc.)
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      httpErr = `HTTP ${res.status}`;
+      console.error("[llm] provider error:", httpErr, errText.slice(0, 200));
+      return { actions: ids.map(fallbackAction), latencyMs, error: httpErr };
+    }
+
+    const json = await res.json();
+    rawText = json?.choices?.[0]?.message?.content ?? "";
+
+  } catch (err) {
+    const latencyMs = Date.now() - t0;
+    clearTimeout(timer);
+
+    const isTimeout = err.name === "AbortError";
+    const errorMsg  = isTimeout ? "LLM request timed out" : `Network error: ${err.message}`;
+    console.error("[llm]", errorMsg);
+    return { actions: ids.map(fallbackAction), latencyMs, error: errorMsg };
   }
 
   const latencyMs = Date.now() - t0;
@@ -149,6 +185,11 @@ async function getLLMActions(sensorArray) {
   } catch {
     console.error("[llm] JSON parse failed. Raw:", rawText.slice(0, 300));
     return { actions: ids.map(fallbackAction), latencyMs, error: "Invalid JSON from LLM" };
+    return {
+      actions:   ids.map(fallbackAction),
+      latencyMs,
+      error:     "Invalid JSON from LLM",
+    };
   }
 
   // The model must return {"actions": [...]}.
@@ -162,6 +203,13 @@ async function getLLMActions(sensorArray) {
   }
 
   // Index by id for fast lookup.
+      actions:   ids.map(fallbackAction),
+      latencyMs,
+      error:     "LLM response missing 'actions' array",
+    };
+  }
+
+  // Index LLM output by id for fast lookup.
   const byId = new Map(rawActions.map((a) => [a?.id, a]));
 
   // ── Validate & normalise each car's action ───────────────────────────────────
@@ -170,6 +218,7 @@ async function getLLMActions(sensorArray) {
     const entry = byId.get(id);
 
     // Missing entry or unrecognised action → plain MAINTAIN fallback.
+    // Missing entry or bad action string → fallback.
     if (!entry || !VALID_ACTIONS.has(entry.action)) {
       hadInvalid = true;
       return fallbackAction(id);
@@ -182,6 +231,15 @@ async function getLLMActions(sensorArray) {
     }
     if (entry.action === "BRAKE") {
       out.intensity = typeof entry.intensity === "number" ? clamp01(entry.intensity) : 0.5;
+      out.throttle = typeof entry.throttle === "number"
+        ? clamp01(entry.throttle)
+        : 0.5; // sensible default if missing
+    }
+
+    if (entry.action === "BRAKE") {
+      out.intensity = typeof entry.intensity === "number"
+        ? clamp01(entry.intensity)
+        : 0.5;
     }
 
     return out;
@@ -202,3 +260,4 @@ async function getLLMActions(sensorArray) {
 }
 
 module.exports = { getLLMActions };
+
