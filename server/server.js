@@ -1,5 +1,12 @@
 /**
  * server.js — Express proxy between the browser sim and the LLM.
+ * Reads config from .env (GROQ_API_KEY, PORT, LLM_PROVIDER, LLM_MODEL,
+ *                         OLLAMA_URL, LLM_TIMEOUT_MS)
+ */
+
+require("dotenv").config();
+const express           = require("express");
+const cors              = require("cors");
  * Reads config from .env (GROQ_API_KEY, PORT, LLM_PROVIDER, LLM_MODEL).
  */
 
@@ -65,6 +72,12 @@ app.post("/api/decide", async (req, res) => {
 
 // ── Start ──────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
+  const provider = process.env.LLM_PROVIDER  || "ollama";
+  const model    = process.env.LLM_MODEL     || "gemma4:31b-cloud";
+  const timeout  = process.env.LLM_TIMEOUT_MS || 8000;
+  console.log(`[server] listening on http://localhost:${PORT}`);
+  console.log(`[server] provider=${provider} model=${model} timeout=${timeout}ms`);
+});
   console.log(`[server] listening on http://localhost:${PORT}`);
   console.log(`[server] model=${process.env.LLM_MODEL || "llama-3.3-70b-versatile"}`);
 });
