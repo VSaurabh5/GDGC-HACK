@@ -1,276 +1,1083 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
-    <title>LLM Traffic Sim</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM 3D Traffic Simulator</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
     <style>
-        body {
-            margin: 0;
-            background: #222;
-            display: flex;
-            justify-content: center;
+        * {
+            box-sizing: border-box;
+            user-select: none;
         }
 
-        canvas {
-            background: #3a7d44;
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+        }
+
+        /* Glassmorphism Styling */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .glass-button {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .glass-button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .glass-button:active {
+            transform: translateY(1px);
+        }
+
+        .glass-button.active {
+            background: rgba(59, 130, 246, 0.35);
+            border-color: rgba(96, 165, 250, 0.6);
+            box-shadow: 0 0 12px rgba(59, 130, 246, 0.4);
+        }
+
+        /* Range Slider Styling */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #3b82f6;
+            cursor: pointer;
+            border: 2px solid #ffffff;
+            box-shadow: 0 0 8px rgba(59, 130, 246, 0.6);
+            transition: transform 0.1s ease;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        /* Custom Scrollbar for side panel */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
         }
     </style>
+
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- OrbitControls -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 
-<body>
-    <canvas id="sim" width="800" height="800"></canvas>
+<body class="relative w-full h-full text-slate-100 overflow-hidden select-none">
+
+    <!-- 3D WebGL Canvas Container -->
+    <div id="canvas-container" class="w-full h-full absolute inset-0 z-0"></div>
+
+    <!-- UI Overlay Layer -->
+    <div class="relative z-10 w-full h-full pointer-events-none p-4 md:p-6 flex flex-col justify-between items-stretch">
+        
+        <!-- Top Bar: Header & HUD Stats -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 w-full max-w-7xl mx-auto">
+            
+            <!-- Branding Header -->
+            <div class="glass-panel rounded-2xl px-5 py-3 pointer-events-auto flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white text-lg shadow-lg shadow-blue-500/30">
+                    <i class="fa-solid font-bold fa-car-side"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight tracking-tight text-white flex items-center gap-2">
+                        LLM Traffic Sim <span class="text-xs font-mono font-medium bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/30">3D Edition</span>
+                    </h1>
+                    <p class="text-xs text-slate-400 font-medium">Autonomous Multi-Agent Intersection Engine</p>
+                </div>
+            </div>
+
+            <!-- Real-time HUD Dashboard -->
+            <div class="glass-panel rounded-2xl p-2.5 pointer-events-auto flex items-center gap-2 sm:gap-4 overflow-x-auto max-w-full">
+                <!-- Collisions Metric -->
+                <div class="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-slate-900/50 border border-white/5">
+                    <div class="w-8 h-8 rounded-lg bg-red-500/20 text-red-400 flex items-center justify-center text-sm font-bold">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <div>
+                        <div class="text-[10px] uppercase font-bold tracking-wider text-slate-400">Collisions</div>
+                        <div id="hud-collisions" class="text-base font-mono font-extrabold text-green-400">0</div>
+                    </div>
+                </div>
+
+                <!-- LLM Latency -->
+                <div class="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-slate-900/50 border border-white/5">
+                    <div class="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-sm font-bold">
+                        <i class="fa-solid fa-microchip"></i>
+                    </div>
+                    <div>
+                        <div class="text-[10px] uppercase font-bold tracking-wider text-slate-400">LLM Latency</div>
+                        <div id="hud-latency" class="text-base font-mono font-extrabold text-slate-200">--</div>
+                    </div>
+                </div>
+
+                <!-- Cleared Cars -->
+                <div class="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-slate-900/50 border border-white/5">
+                    <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-sm font-bold">
+                        <i class="fa-solid fa-[#34c759] fa-circle-check"></i>
+                    </div>
+                    <div>
+                        <div class="text-[10px] uppercase font-bold tracking-wider text-slate-400">Cleared</div>
+                        <div id="hud-cleared" class="text-base font-mono font-extrabold text-slate-200">0</div>
+                    </div>
+                </div>
+
+                <!-- Active Cars -->
+                <div class="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-slate-900/50 border border-white/5">
+                    <div class="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm font-bold">
+                        <i class="fa-solid fa-car"></i>
+                    </div>
+                    <div>
+                        <div class="text-[10px] uppercase font-bold tracking-wider text-slate-400">Active</div>
+                        <div id="hud-active" class="text-base font-mono font-extrabold text-blue-400">0 / 20</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Middle Right: Signal Indicators & Camera Controls -->
+        <div class="flex flex-col md:flex-row justify-between items-end gap-4 w-full max-w-7xl mx-auto my-auto pointer-events-none">
+            <!-- Traffic Signal State HUD (Left Side) -->
+            <div class="glass-panel rounded-2xl p-3 pointer-events-auto flex flex-col gap-2 w-48">
+                <div class="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center justify-between border-b border-white/10 pb-1.5">
+                    <span>Signal States</span>
+                    <i class="fa-solid fa-traffic-light text-slate-400"></i>
+                </div>
+                <div class="flex justify-between items-center bg-slate-900/50 p-2 rounded-xl text-xs font-mono">
+                    <span class="text-slate-400 font-semibold">N / S Axis:</span>
+                    <span id="signal-ns" class="font-bold px-2 py-0.5 rounded text-[11px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">GREEN</span>
+                </div>
+                <div class="flex justify-between items-center bg-slate-900/50 p-2 rounded-xl text-xs font-mono">
+                    <span class="text-slate-400 font-semibold">E / W Axis:</span>
+                    <span id="signal-ew" class="font-bold px-2 py-0.5 rounded text-[11px] bg-red-500/20 text-red-400 border border-red-500/30">RED</span>
+                </div>
+            </div>
+
+            <!-- Quick Camera View Presets (Right Side) -->
+            <div class="glass-panel rounded-2xl p-2 pointer-events-auto flex flex-col gap-1.5">
+                <div class="text-[10px] uppercase tracking-wider font-bold text-slate-400 px-2 pt-1">Camera Views</div>
+                <div class="flex gap-1.5">
+                    <button id="cam-perspective" class="glass-button active px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-2 text-white">
+                        <i class="fa-solid fa-cube"></i> 3D Perspective
+                    </button>
+                    <button id="cam-topdown" class="glass-button px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-2 text-slate-300">
+                        <i class="fa-solid fa-map-location-dot"></i> Top-Down
+                    </button>
+                    <button id="cam-chase" class="glass-button px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-2 text-slate-300">
+                        <i class="fa-solid fa-video"></i> Follow Vehicle
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Controls Bar -->
+        <div class="glass-panel rounded-2xl p-3 md:p-4 pointer-events-auto max-w-7xl mx-auto w-full">
+            <div class="flex flex-col lg:flex-row items-center justify-between gap-4">
+                
+                <!-- Action Controls (Play/Pause, Reset, Force Spawn) -->
+                <div class="flex items-center gap-2.5 w-full lg:w-auto justify-center">
+                    <button id="btn-pause" class="glass-button px-4 py-2.5 rounded-xl text-xs font-bold text-white flex items-center gap-2 bg-blue-600/30 border-blue-500/40">
+                        <i class="fa-solid fa-pause" id="icon-pause"></i> <span id="text-pause">PAUSE</span>
+                    </button>
+                    <button id="btn-reset" class="glass-button px-4 py-2.5 rounded-xl text-xs font-bold text-slate-300 flex items-center gap-2">
+                        <i class="fa-solid fa-rotate-left"></i> RESET
+                    </button>
+                    <button id="btn-spawn" class="glass-button px-4 py-2.5 rounded-xl text-xs font-bold text-emerald-400 flex items-center gap-2">
+                        <i class="fa-solid fa-plus"></i> SPAWN VEHICLE
+                    </button>
+                </div>
+
+                <!-- Sliders Container -->
+                <div class="flex flex-col sm:flex-row items-center gap-6 w-full lg:w-auto justify-end">
+                    <!-- Traffic Density / Spawn Interval Slider -->
+                    <div class="flex items-center gap-3 w-full sm:w-64">
+                        <i class="fa-solid fa-car-side text-slate-400 text-sm"></i>
+                        <div class="flex-1">
+                            <div class="flex justify-between text-[11px] font-semibold text-slate-300 mb-1">
+                                <span>Spawn Rate</span>
+                                <span id="label-spawn-rate" class="font-mono text-blue-400">1.0s</span>
+                            </div>
+                            <input id="slider-spawn" type="range" min="0.3" max="3.0" step="0.1" value="1.0" class="w-full">
+                        </div>
+                    </div>
+
+                    <!-- Light Cycle Speed Slider -->
+                    <div class="flex items-center gap-3 w-full sm:w-64">
+                        <i class="fa-solid fa-stopwatch text-slate-400 text-sm"></i>
+                        <div class="flex-1">
+                            <div class="flex justify-between text-[11px] font-semibold text-slate-300 mb-1">
+                                <span>Light Cycle Speed</span>
+                                <span id="label-cycle-speed" class="font-mono text-blue-400">1.0x</span>
+                            </div>
+                            <input id="slider-cycle" type="range" min="0.5" max="3.0" step="0.25" value="1.0" class="w-full">
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Main JavaScript Simulator Module -->
     <script>
-        const canvas = document.getElementById("sim");
-        const ctx = canvas.getContext("2d");
+        /**
+         * Encapsulated LLM Traffic Simulation App
+         * Strictly avoiding global namespace pollution via IIFE.
+         */
+        (function TrafficSimApp() {
+            "use strict";
 
-        const SIZE = 800, C = 400, ROAD = 160, H = ROAD / 2;
+            // --- CONSTANTS & SIMULATION CONSTANTS ---
+            // Preserved exact physical proportions and scaling from original logic
+            const SIZE = 800;
+            const C = 400; // Center coordinate (400, 400 in 2D space)
+            const ROAD = 160;
+            const H = ROAD / 2; // 80px
 
-        // ---- Traffic lights ----
-        const phases = [
-            { ns: "GREEN", ew: "RED", ms: 6000 },
-            { ns: "YELLOW", ew: "RED", ms: 2000 },
-            { ns: "RED", ew: "RED", ms: 1000 },
-            { ns: "RED", ew: "GREEN", ms: 6000 },
-            { ns: "RED", ew: "YELLOW", ms: 2000 },
-            { ns: "RED", ew: "RED", ms: 1000 },
-        ];
-        const cycleMs = phases.reduce((s, p) => s + p.ms, 0);
+            const L = 30;         // Car length (30 world units)
+            const W = 16;         // Car width (16 world units)
+            const MAX_SPEED = 120;// Max speed (px/s or units/s)
+            const ACC = 60;       // Max acceleration (px/s²)
+            const DEC = 150;      // Max braking deceleration (px/s²)
+            const STOP_S = 320;   // Distance from spawn edge to stop line (400 - 80 = 320)
+            let MAX_CARS = 20;
 
-        function currentPhase(now) {
-            let t = now % cycleMs;
-            for (const p of phases) {
-                if (t < p.ms) return p;
-                t -= p.ms;
-            }
-        }
+            // Lane centers offsets in 2D coordinate space matching original LANES logic
+            // LANES = { N: [340, 380], S: [460, 420], W: [420, 460], E: [380, 340] }
+            const LANES = { 
+                N: [340, 380], 
+                S: [460, 420], 
+                W: [420, 460], 
+                E: [380, 340] 
+            };
 
-        // dir = "N", "S", "E" or "W" (the side the car comes from)
-        function getLightState(dir) {
-            const p = currentPhase(performance.now());
-            return (dir === "N" || dir === "S") ? p.ns : p.ew;
-        }
+            const CAR_COLORS = {
+                N: 0x3b82f6, // Blue
+                S: 0xf97316, // Orange
+                W: 0xa855f7, // Purple
+                E: 0xeab308  // Yellow
+            };
 
-        // ---- Drawing ----
-        function drawRoad() {
-            ctx.fillStyle = "#3a7d44";
-            ctx.fillRect(0, 0, SIZE, SIZE);
+            // Traffic Light Cycles (Original timing maintained)
+            const basePhases = [
+                { ns: "GREEN",  ew: "RED",    ms: 6000 },
+                { ns: "YELLOW", ew: "RED",    ms: 2000 },
+                { ns: "RED",    ew: "RED",    ms: 1000 },
+                { ns: "RED",    ew: "GREEN",  ms: 6000 },
+                { ns: "RED",    ew: "YELLOW", ms: 2000 },
+                { ns: "RED",    ew: "RED",    ms: 1000 },
+            ];
 
-            ctx.fillStyle = "#444";
-            ctx.fillRect(C - H, 0, ROAD, SIZE);   // vertical road
-            ctx.fillRect(0, C - H, SIZE, ROAD);   // horizontal road
+            // App State Variables
+            let isPaused = false;
+            let spawnIntervalSec = 1.0;
+            let cycleSpeedMultiplier = 1.0;
+            let cameraMode = 'perspective'; // 'perspective', 'topdown', 'chase'
+            
+            // HUD metrics
+            const hud = {
+                collisions: 0,
+                latencyMs: null,
+                cleared: 0
+            };
 
-            // dashed lane lines
-            ctx.strokeStyle = "white";
-            ctx.lineWidth = 2;
-            ctx.setLineDash([16, 14]);
-            for (const o of [-H / 2, H / 2]) {
-                line(C + o, 0, C + o, C - H);
-                line(C + o, C + H, C + o, SIZE);
-                line(0, C + o, C - H, C + o);
-                line(C + H, C + o, SIZE, C + o);
-            }
+            // Internal Data structures
+            let cars = [];
+            let nextId = 0;
+            let touchingSet = new Set();
+            let lastTimestamp = performance.now();
+            let spawnTimer = 0;
+            let simTimeMs = 0;
 
-            // yellow centre lines
-            ctx.setLineDash([]);
-            ctx.strokeStyle = "#f5c518";
-            line(C, 0, C, C - H);
-            line(C, C + H, C, SIZE);
-            line(0, C, C - H, C);
-            line(C + H, C, SIZE, C);
+            // Three.js Scene Components
+            let container, renderer, scene, camera, controls;
+            let carMeshesMap = new Map(); // Maps car.id -> Three Object3D
+            let trafficLightLamps = {};  // Lamp lights cache
 
-            // stop lines
-            ctx.strokeStyle = "white";
-            ctx.lineWidth = 5;
-            line(C - H, C - H, C, C - H);   // from North
-            line(C, C + H, C + H, C + H);   // from South
-            line(C - H, C, C - H, C + H);   // from West
-            line(C + H, C - H, C + H, C);   // from East
-        }
-
-        function line(x1, y1, x2, y2) {
-            ctx.beginPath();
-            ctx.moveTo(x1, y1);
-            ctx.lineTo(x2, y2);
-            ctx.stroke();
-        }
-
-        function drawLight(x, y, state) {
-            ctx.fillStyle = "#111";
-            ctx.fillRect(x, y, 22, 62);
-            const lamps = [["RED", "#ff3b30"], ["YELLOW", "#ffcc00"], ["GREEN", "#34c759"]];
-            lamps.forEach(([name, color], i) => {
-                ctx.beginPath();
-                ctx.arc(x + 11, y + 11 + i * 20, 8, 0, Math.PI * 2);
-                ctx.fillStyle = state === name ? color : "#333";
-                ctx.fill();
+            // --- INITIALIZATION ---
+            window.addEventListener('DOMContentLoaded', () => {
+                initThreeJS();
+                build3DEnvironment();
+                setupUIControls();
+                
+                // Start animation loop
+                requestAnimationFrame(simLoop);
             });
-        }
 
-        function drawLights() {
-            drawLight(C - H - 30, C - H - 70, getLightState("N"));
-            drawLight(C + H + 8, C + H + 8, getLightState("S"));
-            drawLight(C - H - 70, C + H + 8, getLightState("W"));
-            drawLight(C + H + 48, C - H - 70, getLightState("E"));
-        }
-        // ---- HUD ----
-        const hud = { collisions: 0, latencyMs: null, cleared: 0 };
+            // --- THREE.JS GRAPHICS SETUP ---
+            function initThreeJS() {
+                container = document.getElementById('canvas-container');
 
-        function drawHUD() {
-            ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
-            ctx.fillRect(10, 10, 230, 100);
+                // WebGL Renderer setup
+                renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                renderer.shadowMap.enabled = true;
+                renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                renderer.outputEncoding = THREE.sRGBEncoding;
+                container.appendChild(renderer.domElement);
 
-            ctx.font = "16px Arial";
-            ctx.textAlign = "left";
+                // Scene Setup
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x0f172a);
+                scene.fog = new THREE.FogExp2(0x0f172a, 0.0006);
 
-            ctx.fillStyle = hud.collisions > 0 ? "#ff3b30" : "#34c759";
-            ctx.fillText("Collisions: " + hud.collisions, 22, 38);
+                // Camera Setup (3D perspective default)
+                camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 3000);
+                
+                // Orbit Controls
+                controls = new THREE.OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.05;
+                controls.maxPolarAngle = Math.PI / 2 - 0.05; // Prevent camera under floor
+                controls.minDistance = 200;
+                controls.maxDistance = 1400;
 
-            ctx.fillStyle = "white";
-            const lat = hud.latencyMs === null ? "--" : Math.round(hud.latencyMs) + " ms";
-            ctx.fillText("LLM latency: " + lat, 22, 65);
-            ctx.fillText("Cleared: " + hud.cleared, 22, 92);
-        }
+                setCameraPreset('perspective');
 
-        // ---- Cars ----
-        const L = 30, W = 16;       // car length and width (pixels)
-        const MAX_SPEED = 120;      // px per second
-        const ACC = 60;             // max acceleration (px/s²)
-        const DEC = 150;            // max braking (px/s²)
-        const STOP_S = 320;         // distance from spawn edge to the stop line
-        const MAX_CARS = 20;
+                // Lighting
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+                scene.add(ambientLight);
 
-        // lane centre for each direction (x for N/S, y for W/E)
-        const LANES = { N: [340, 380], S: [460, 420], W: [420, 460], E: [380, 340] };
-        const COLORS = { N: "#4da3ff", S: "#ff9f43", W: "#c77dff", E: "#ffd166" };
+                const sunLight = new THREE.DirectionalLight(0xffffff, 0.9);
+                sunLight.position.set(400, 800, 400);
+                sunLight.castShadow = true;
+                sunLight.shadow.mapSize.width = 2048;
+                sunLight.shadow.mapSize.height = 2048;
+                sunLight.shadow.camera.near = 100;
+                sunLight.shadow.camera.far = 1800;
+                const d = 600;
+                sunLight.shadow.camera.left = -d;
+                sunLight.shadow.camera.right = d;
+                sunLight.shadow.camera.top = d;
+                sunLight.shadow.camera.bottom = -d;
+                sunLight.shadow.bias = -0.0005;
+                scene.add(sunLight);
 
-        let cars = [];
-        let nextId = 0;
-
-        function spawnCar() {
-            if (cars.length >= MAX_CARS) return;
-            const dir = ["N", "S", "E", "W"][Math.floor(Math.random() * 4)];
-            const lane = Math.floor(Math.random() * 2);
-            const same = cars.filter(c => c.dir === dir && c.lane === lane);
-            const rearMost = same.length ? Math.min(...same.map(c => c.s - L)) : Infinity;
-            if (rearMost < 60) return;   // not enough space at the entrance
-            cars.push({ id: nextId++, dir, lane, s: 0, v: 60, action: { action: "MAINTAIN" } });
-        }
-
-        // centre position and rotation of a car on the canvas
-        function carPos(c) {
-            const m = c.s - L / 2;
-            if (c.dir === "N") return { x: LANES.N[c.lane], y: m, a: Math.PI / 2 };
-            if (c.dir === "S") return { x: LANES.S[c.lane], y: SIZE - m, a: -Math.PI / 2 };
-            if (c.dir === "W") return { x: m, y: LANES.W[c.lane], a: 0 };
-            return { x: SIZE - m, y: LANES.E[c.lane], a: Math.PI };
-        }
-
-        const clamp01 = x => Math.min(1, Math.max(0, x));
-
-        function applyPhysics(c, dt) {
-            const a = c.action;
-            let acc = 0;
-            if (a.action === "ACCELERATE") acc = clamp01(a.throttle ?? 0.5) * ACC;
-            else if (a.action === "BRAKE") acc = -clamp01(a.intensity ?? 0.5) * DEC;
-            c.v = Math.min(MAX_SPEED, Math.max(0, c.v + acc * dt));
-            c.s += c.v * dt;
-        }
-
-        // TEMPORARY test driver. Step 6 replaces this with the LLM.
-        function decideTest(c) {
-            const v = c.v;
-            let brake = 0;
-
-            let ahead = null;
-            for (const o of cars) {
-                if (o !== c && o.dir === c.dir && o.lane === c.lane && o.s > c.s && (!ahead || o.s < ahead.s)) ahead = o;
-            }
-            if (ahead) {
-                const gap = (ahead.s - L) - c.s;
-                if (gap < 12) return v > ahead.v ? { action: "BRAKE", intensity: 1 } : { action: "MAINTAIN" };
-                if (v > ahead.v) brake = Math.max(brake, ((v * v - ahead.v * ahead.v) / (2 * (gap - 8))) / (DEC * 0.8));
+                // Window Resize Handler
+                window.addEventListener('resize', onWindowResize, false);
             }
 
-            const state = getLightState(c.dir);
-            const dist = STOP_S - c.s;
-            if (state !== "GREEN" && dist > 0) {
-                const raw = (v * v) / (2 * Math.max(dist - 4, 0.5)) / DEC;
-                if (!(state === "YELLOW" && raw > 1)) brake = Math.max(brake, raw / 0.8);
-                if (dist < 8 && v < 10) return { action: "BRAKE", intensity: 1 };
+            function setCameraPreset(mode) {
+                cameraMode = mode;
+                
+                // Update UI button state
+                document.querySelectorAll('#cam-perspective, #cam-topdown, #cam-chase').forEach(b => b.classList.remove('active'));
+                
+                if (mode === 'perspective') {
+                    document.getElementById('cam-perspective').classList.add('active');
+                    controls.enabled = true;
+                    // Standard Isometric angle looking at center (400, 0, 400)
+                    camera.position.set(400, 650, 950);
+                    controls.target.set(400, 0, 400);
+                    controls.update();
+                } else if (mode === 'topdown') {
+                    document.getElementById('cam-topdown').classList.add('active');
+                    controls.enabled = true;
+                    camera.position.set(400, 950, 400.1); // Slightly offset Z to preserve up vector
+                    controls.target.set(400, 0, 400);
+                    controls.update();
+                } else if (mode === 'chase') {
+                    document.getElementById('cam-chase').classList.add('active');
+                    controls.enabled = false;
+                }
             }
 
-            if (brake > 0.03) return { action: "BRAKE", intensity: Math.min(1, brake) };
-            return { action: "ACCELERATE", throttle: 0.8 };
-        }
+            function onWindowResize() {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
 
-        // ---- Collision counting ----
-        function box(c) {
-            const p = carPos(c);
-            const horiz = c.dir === "W" || c.dir === "E";
-            const w = horiz ? L : W, h = horiz ? W : L;
-            return { x1: p.x - w / 2, x2: p.x + w / 2, y1: p.y - h / 2, y2: p.y + h / 2 };
-        }
+            // --- 3D ENVIRONMENT BUILDER ---
+            function build3DEnvironment() {
+                // Ground / Grass Terrain (SIZE x SIZE world area centered around (400, 400))
+                const grassGeo = new THREE.PlaneGeometry(2400, 2400);
+                const grassMat = new THREE.MeshStandardMaterial({ color: 0x2e6f40, roughness: 0.9, metalness: 0.1 });
+                const grass = new THREE.Mesh(grassGeo, grassMat);
+                grass.rotation.x = -Math.PI / 2;
+                grass.position.set(400, -1, 400);
+                grass.receiveShadow = true;
+                scene.add(grass);
 
-        let touching = new Set();
-        function checkCollisions() {
-            const now = new Set();
-            for (let i = 0; i < cars.length; i++) {
-                for (let j = i + 1; j < cars.length; j++) {
-                    const a = box(cars[i]), b = box(cars[j]);
-                    if (a.x1 < b.x2 && a.x2 > b.x1 && a.y1 < b.y2 && a.y2 > b.y1) {
-                        const key = cars[i].id + "-" + cars[j].id;
-                        now.add(key);
-                        if (!touching.has(key)) hud.collisions++;
+                // Road Surface Group
+                const roadGroup = new THREE.Group();
+
+                // Main Asphalt Roads (Vertical & Horizontal crossing)
+                const roadMat = new THREE.MeshStandardMaterial({ color: 0x262930, roughness: 0.8 });
+
+                // Vertical Road (X centered at 400, Z from 0 to 800)
+                const vRoadGeo = new THREE.PlaneGeometry(ROAD, SIZE);
+                const vRoad = new THREE.Mesh(vRoadGeo, roadMat);
+                vRoad.rotation.x = -Math.PI / 2;
+                vRoad.position.set(C, 0, C);
+                vRoad.receiveShadow = true;
+                roadGroup.add(vRoad);
+
+                // Horizontal Road (Z centered at 400, X from 0 to 800)
+                const hRoadGeo = new THREE.PlaneGeometry(SIZE, ROAD);
+                const hRoad = new THREE.Mesh(hRoadGeo, roadMat);
+                hRoad.rotation.x = -Math.PI / 2;
+                hRoad.position.set(C, 0, C);
+                hRoad.receiveShadow = true;
+                roadGroup.add(hRoad);
+
+                // Concrete Sidewalks & Curbs
+                const curbMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.6 });
+                const curbHeight = 3;
+                
+                // 4 Quadrants of Sidewalk Blocks
+                const cornerSize = (SIZE - ROAD) / 2; // 320
+                const cornerOffset = cornerSize / 2;  // 160
+
+                const createSidewalkBlock = (x, z) => {
+                    const geo = new THREE.BoxGeometry(cornerSize, curbHeight, cornerSize);
+                    const mesh = new THREE.Mesh(geo, curbMat);
+                    mesh.position.set(x, curbHeight / 2, z);
+                    mesh.receiveShadow = true;
+                    mesh.castShadow = true;
+                    roadGroup.add(mesh);
+                };
+
+                createSidewalkBlock(cornerOffset, cornerOffset);                             // North-West
+                createSidewalkBlock(SIZE - cornerOffset, cornerOffset);                      // North-East
+                createSidewalkBlock(cornerOffset, SIZE - cornerOffset);                      // South-West
+                createSidewalkBlock(SIZE - cornerOffset, SIZE - cornerOffset);               // South-East
+
+                scene.add(roadGroup);
+
+                // Road Markings (Dashed Lane Dividers, Yellow Double Center Lines, Stop Lines)
+                buildRoadMarkings();
+
+                // Decorative Trees & Environment Detail
+                buildSceneryDetails();
+
+                // Create 3D Traffic Light Signal Structures
+                buildTrafficLightPosts();
+            }
+
+            function buildRoadMarkings() {
+                const markingsGroup = new THREE.Group();
+                const whiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                const yellowMat = new THREE.MeshBasicMaterial({ color: 0xf5c518 });
+                const lineY = 0.4; // Slightly above road surface to prevent z-fighting
+
+                // White Stop Lines (5px thick in 2D canvas -> 5 world units)
+                const createStopLine = (x, z, width, depth) => {
+                    const geo = new THREE.PlaneGeometry(width, depth);
+                    const mesh = new THREE.Mesh(geo, whiteMat);
+                    mesh.rotation.x = -Math.PI / 2;
+                    mesh.position.set(x, lineY, z);
+                    markingsGroup.add(mesh);
+                };
+
+                createStopLine(C - H / 2, C - H, H, 6); // North incoming stop line
+                createStopLine(C + H / 2, C + H, H, 6); // South incoming stop line
+                createStopLine(C - H, C + H / 2, 6, H); // West incoming stop line
+                createStopLine(C + H, C - H / 2, 6, H); // East incoming stop line
+
+                // Yellow Center Lines
+                const createYellowCenter = (x, z, width, depth) => {
+                    const geo = new THREE.PlaneGeometry(width, depth);
+                    const mesh = new THREE.Mesh(geo, yellowMat);
+                    mesh.rotation.x = -Math.PI / 2;
+                    mesh.position.set(x, lineY, z);
+                    markingsGroup.add(mesh);
+                };
+
+                createYellowCenter(C, (C - H) / 2, 3, C - H);         // North Center
+                createYellowCenter(C, SIZE - (C - H) / 2, 3, C - H);  // South Center
+                createYellowCenter((C - H) / 2, C, C - H, 3);         // West Center
+                createYellowCenter(SIZE - (C - H) / 2, C, C - H, 3);  // East Center
+
+                // Dashed Lane Lines
+                const dashMat = new THREE.MeshBasicMaterial({ color: 0xe2e8f0 });
+                const dashLen = 16, gapLen = 14;
+
+                const createDashedSegment = (startX, startZ, endX, endZ, isVert) => {
+                    const totalDist = isVert ? Math.abs(endZ - startZ) : Math.abs(endX - startX);
+                    let curr = 0;
+                    while (curr < totalDist) {
+                        const len = Math.min(dashLen, totalDist - curr);
+                        const geo = isVert ? new THREE.PlaneGeometry(2, len) : new THREE.PlaneGeometry(len, 2);
+                        const mesh = new THREE.Mesh(geo, dashMat);
+                        mesh.rotation.x = -Math.PI / 2;
+                        
+                        if (isVert) {
+                            const zPos = startZ < endZ ? startZ + curr + len / 2 : startZ - curr - len / 2;
+                            mesh.position.set(startX, lineY, zPos);
+                        } else {
+                            const xPos = startX < endX ? startX + curr + len / 2 : startX - curr - len / 2;
+                            mesh.position.set(xPos, lineY, startZ);
+                        }
+                        markingsGroup.add(mesh);
+                        curr += dashLen + gapLen;
+                    }
+                };
+
+                // Vertical dashed lines
+                for (const o of [-H / 2, H / 2]) {
+                    createDashedSegment(C + o, 0, C + o, C - H, true);
+                    createDashedSegment(C + o, C + H, C + o, SIZE, true);
+                    createDashedSegment(0, C + o, C - H, C + o, false);
+                    createDashedSegment(C + H, C + o, SIZE, C + o, false);
+                }
+
+                scene.add(markingsGroup);
+            }
+
+            function buildSceneryDetails() {
+                // Low-poly stylized trees in grass corners
+                const treeGroup = new THREE.Group();
+                const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 });
+                const leavesMat = new THREE.MeshStandardMaterial({ color: 0x1e5e3a, roughness: 0.6, flatShading: true });
+
+                const createTree = (x, z, scale = 1) => {
+                    const group = new THREE.Group();
+                    
+                    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(4 * scale, 6 * scale, 25 * scale, 6), trunkMat);
+                    trunk.position.y = (25 * scale) / 2;
+                    trunk.castShadow = true;
+                    group.add(trunk);
+
+                    const leaves = new THREE.Mesh(new THREE.ConeGeometry(22 * scale, 45 * scale, 6), leavesMat);
+                    leaves.position.y = 25 * scale + (45 * scale) / 2 - 5;
+                    leaves.castShadow = true;
+                    group.add(leaves);
+
+                    group.position.set(x, 0, z);
+                    treeGroup.add(group);
+                };
+
+                // Populate corners with foliage
+                const offsets = [
+                    [100, 100], [220, 80], [80, 220], [250, 250],
+                    [700, 100], [580, 80], [720, 220], [550, 250],
+                    [100, 700], [220, 720], [80, 580], [250, 550],
+                    [700, 700], [580, 720], [720, 580], [550, 550]
+                ];
+
+                offsets.forEach(([x, z], i) => createTree(x, z, 0.8 + (i % 3) * 0.2));
+                scene.add(treeGroup);
+            }
+
+            function buildTrafficLightPosts() {
+                // Light post configurations matching original drawLight positions
+                // Original drawLight calls:
+                // N: (C - H - 30, C - H - 70)
+                // S: (C + H + 8, C + H + 8)
+                // W: (C - H - 70, C + H + 8)
+                // E: (C + H + 48, C - H - 70)
+                const postConfigs = [
+                    { dir: "N", x: C - H - 30, z: C - H - 40, rot: 0 },
+                    { dir: "S", x: C + H + 30, z: C + H + 40, rot: Math.PI },
+                    { dir: "W", x: C - H - 40, z: C + H + 30, rot: -Math.PI / 2 },
+                    { dir: "E", x: C + H + 40, z: C - H - 30, rot: Math.PI / 2 }
+                ];
+
+                const postMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.8, roughness: 0.3 });
+
+                postConfigs.forEach(cfg => {
+                    const group = new THREE.Group();
+
+                    // Metal Pole
+                    const pole = new THREE.Mesh(new THREE.CylinderGeometry(2, 2.5, 55, 12), postMat);
+                    pole.position.y = 27.5;
+                    pole.castShadow = true;
+                    group.add(pole);
+
+                    // Box Head housing
+                    const box = new THREE.Mesh(new THREE.BoxGeometry(14, 38, 12), postMat);
+                    box.position.set(0, 42, 0);
+                    box.castShadow = true;
+                    group.add(box);
+
+                    // Lamps setup (Red, Yellow, Green)
+                    const lamps = {};
+                    const colors = {
+                        RED: { color: 0xff3b30, y: 52 },
+                        YELLOW: { color: 0xffcc00, y: 42 },
+                        GREEN: { color: 0x34c759, y: 32 }
+                    };
+
+                    Object.entries(colors).forEach(([stateName, info]) => {
+                        // Off-state dark mesh
+                        const lampGeo = new THREE.SphereGeometry(4, 16, 16);
+                        const lampMat = new THREE.MeshStandardMaterial({ 
+                            color: 0x111111, 
+                            roughness: 0.3,
+                            emissive: 0x000000,
+                            emissiveIntensity: 0 
+                        });
+                        const lampMesh = new THREE.Mesh(lampGeo, lampMat);
+                        lampMesh.position.set(0, info.y - 42, 5); // Facing forward
+                        box.add(lampMesh);
+
+                        lamps[stateName] = {
+                            material: lampMat,
+                            baseColor: info.color
+                        };
+                    });
+
+                    group.position.set(cfg.x, 0, cfg.z);
+                    group.rotation.y = cfg.rot;
+                    scene.add(group);
+
+                    trafficLightLamps[cfg.dir] = lamps;
+                });
+            }
+
+            // --- 3D VEHICLE MESH FACTORY ---
+            function createCarMesh(colorHex) {
+                const carGroup = new THREE.Group();
+
+                // Main Chassis Body
+                const bodyMat = new THREE.MeshStandardMaterial({ color: colorHex, metalness: 0.3, roughness: 0.4 });
+                const bodyGeo = new THREE.BoxGeometry(W, 10, L);
+                const body = new THREE.Mesh(bodyGeo, bodyMat);
+                body.position.y = 7;
+                body.castShadow = true;
+                body.receiveShadow = true;
+                carGroup.add(body);
+
+                // Cabin Roof
+                const cabinMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.2, metalness: 0.8 });
+                const cabinGeo = new THREE.BoxGeometry(W - 2, 7, L * 0.5);
+                const cabin = new THREE.Mesh(cabinGeo, cabinMat);
+                cabin.position.set(0, 13.5, -2);
+                cabin.castShadow = true;
+                carGroup.add(cabin);
+
+                // Headlights (Front is +Z in local car space)
+                const headlightMat = new THREE.MeshBasicMaterial({ color: 0xffffd1 });
+                const hlGeo = new THREE.BoxGeometry(3, 2, 1);
+                
+                const hlLeft = new THREE.Mesh(hlGeo, headlightMat);
+                hlLeft.position.set(-W / 2 + 3, 7, L / 2 + 0.5);
+                carGroup.add(hlLeft);
+
+                const hlRight = new THREE.Mesh(hlGeo, headlightMat);
+                hlRight.position.set(W / 2 - 3, 7, L / 2 + 0.5);
+                carGroup.add(hlRight);
+
+                // Brake Lights (Rear is -Z in local car space)
+                const brakeMat = new THREE.MeshStandardMaterial({ 
+                    color: 0x440000, 
+                    emissive: 0x000000,
+                    emissiveIntensity: 0
+                });
+                const blGeo = new THREE.BoxGeometry(3.5, 2, 1);
+
+                const blLeft = new THREE.Mesh(blGeo, brakeMat);
+                blLeft.position.set(-W / 2 + 3, 7, -L / 2 - 0.5);
+                carGroup.add(blLeft);
+
+                const blRight = new THREE.Mesh(blGeo, brakeMat);
+                blRight.position.set(W / 2 - 3, 7, -L / 2 - 0.5);
+                carGroup.add(blRight);
+
+                // Wheels (4 wheels)
+                const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
+                const wheelGeo = new THREE.CylinderGeometry(3.5, 3.5, 2.5, 12);
+                wheelGeo.rotateZ(Math.PI / 2);
+
+                const wheelPositions = [
+                    [-W / 2 - 0.5, 3.5, L / 3],
+                    [W / 2 + 0.5, 3.5, L / 3],
+                    [-W / 2 - 0.5, 3.5, -L / 3],
+                    [W / 2 + 0.5, 3.5, -L / 3],
+                ];
+
+                wheelPositions.forEach(pos => {
+                    const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+                    wheel.position.set(...pos);
+                    wheel.castShadow = true;
+                    carGroup.add(wheel);
+                });
+
+                return {
+                    group: carGroup,
+                    brakeMaterial: brakeMat
+                };
+            }
+
+            // --- TRAFFIC LIGHT LOGIC ---
+            function currentPhase(nowMs) {
+                // Adjust cycle timing by multiplier
+                const scaledCycleMs = basePhases.reduce((s, p) => s + (p.ms / cycleSpeedMultiplier), 0);
+                let t = nowMs % scaledCycleMs;
+                
+                for (const p of basePhases) {
+                    const duration = p.ms / cycleSpeedMultiplier;
+                    if (t < duration) return p;
+                    t -= duration;
+                }
+                return basePhases[0];
+            }
+
+            function getLightState(dir) {
+                const p = currentPhase(simTimeMs);
+                return (dir === "N" || dir === "S") ? p.ns : p.ew;
+            }
+
+            function updateTrafficLightVisuals() {
+                const nsState = getLightState("N");
+                const ewState = getLightState("W");
+
+                // Update HUD Text Tags
+                const nsTag = document.getElementById('signal-ns');
+                const ewTag = document.getElementById('signal-ew');
+
+                if (nsTag) {
+                    nsTag.innerText = nsState;
+                    nsTag.className = `font-bold px-2 py-0.5 rounded text-[11px] border ${
+                        nsState === 'GREEN' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                        nsState === 'YELLOW' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' :
+                        'bg-red-500/20 text-red-400 border-red-500/30'
+                    }`;
+                }
+
+                if (ewTag) {
+                    ewTag.innerText = ewState;
+                    ewTag.className = `font-bold px-2 py-0.5 rounded text-[11px] border ${
+                        ewState === 'GREEN' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                        ewState === 'YELLOW' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' :
+                        'bg-red-500/20 text-red-400 border-red-500/30'
+                    }`;
+                }
+
+                // Update 3D Lamps Emissive Glow
+                ["N", "S", "E", "W"].forEach(dir => {
+                    const state = getLightState(dir);
+                    const lamps = trafficLightLamps[dir];
+                    if (!lamps) return;
+
+                    Object.keys(lamps).forEach(colorKey => {
+                        const lamp = lamps[colorKey];
+                        if (colorKey === state) {
+                            lamp.material.color.setHex(lamp.baseColor);
+                            lamp.material.emissive.setHex(lamp.baseColor);
+                            lamp.material.emissiveIntensity = 0.9;
+                        } else {
+                            lamp.material.color.setHex(0x111111);
+                            lamp.material.emissive.setHex(0x000000);
+                            lamp.material.emissiveIntensity = 0;
+                        }
+                    });
+                });
+            }
+
+            // --- CAR SPAWNING & POSITIONING ---
+            function spawnCar() {
+                if (cars.length >= MAX_CARS) return;
+                const dir = ["N", "S", "E", "W"][Math.floor(Math.random() * 4)];
+                const lane = Math.floor(Math.random() * 2);
+                
+                const same = cars.filter(c => c.dir === dir && c.lane === lane);
+                const rearMost = same.length ? Math.min(...same.map(c => c.s - L)) : Infinity;
+                if (rearMost < 60) return; // Not enough clearance at entry spawn
+
+                const id = nextId++;
+                const newCar = { 
+                    id, 
+                    dir, 
+                    lane, 
+                    s: 0, 
+                    v: 60, 
+                    action: { action: "MAINTAIN" } 
+                };
+
+                cars.push(newCar);
+
+                // Create 3D Mesh
+                const carObj = createCarMesh(CAR_COLORS[dir]);
+                scene.add(carObj.group);
+                carMeshesMap.set(id, carObj);
+            }
+
+            // Maps 2D car coordinate logic directly onto 3D Three.js scene coordinates
+            // 2D space: Top-Left is (0,0), Bottom-Right is (800,800)
+            // 3D space: X = x, Z = y, Y = height
+            function carPos(c) {
+                const m = c.s - L / 2;
+                if (c.dir === "N") return { x: LANES.N[c.lane], y: m, a: Math.PI };
+                if (c.dir === "S") return { x: LANES.S[c.lane], y: SIZE - m, a: 0 };
+                if (c.dir === "W") return { x: m, y: LANES.W[c.lane], a: Math.PI / 2 };
+                return { x: SIZE - m, y: LANES.E[c.lane], a: -Math.PI / 2 };
+            }
+
+            const clamp01 = x => Math.min(1, Math.max(0, x));
+
+            // --- PHYSICS & DRIVER DECISION LOGIC ---
+            function applyPhysics(c, dt) {
+                const a = c.action;
+                let acc = 0;
+                if (a.action === "ACCELERATE") acc = clamp01(a.throttle ?? 0.5) * ACC;
+                else if (a.action === "BRAKE") acc = -clamp01(a.intensity ?? 0.5) * DEC;
+                c.v = Math.min(MAX_SPEED, Math.max(0, c.v + acc * dt));
+                c.s += c.v * dt;
+            }
+
+            // Test Driver heuristic (Designed for modular replacement by LLM agent calls)
+            function decideTest(c) {
+                const v = c.v;
+                let brake = 0;
+
+                let ahead = null;
+                for (const o of cars) {
+                    if (o !== c && o.dir === c.dir && o.lane === c.lane && o.s > c.s && (!ahead || o.s < ahead.s)) ahead = o;
+                }
+                if (ahead) {
+                    const gap = (ahead.s - L) - c.s;
+                    if (gap < 12) return v > ahead.v ? { action: "BRAKE", intensity: 1 } : { action: "MAINTAIN" };
+                    if (v > ahead.v) brake = Math.max(brake, ((v * v - ahead.v * ahead.v) / (2 * (gap - 8))) / (DEC * 0.8));
+                }
+
+                const state = getLightState(c.dir);
+                const dist = STOP_S - c.s;
+                if (state !== "GREEN" && dist > 0) {
+                    const raw = (v * v) / (2 * Math.max(dist - 4, 0.5)) / DEC;
+                    if (!(state === "YELLOW" && raw > 1)) brake = Math.max(brake, raw / 0.8);
+                    if (dist < 8 && v < 10) return { action: "BRAKE", intensity: 1 };
+                }
+
+                if (brake > 0.03) return { action: "BRAKE", intensity: Math.min(1, brake) };
+                return { action: "ACCELERATE", throttle: 0.8 };
+            }
+
+            // --- COLLISION DETECTION ---
+            function box(c) {
+                const p = carPos(c);
+                const horiz = c.dir === "W" || c.dir === "E";
+                const w = horiz ? L : W, h = horiz ? W : L;
+                return { x1: p.x - w / 2, x2: p.x + w / 2, y1: p.y - h / 2, y2: p.y + h / 2 };
+            }
+
+            function checkCollisions() {
+                const now = new Set();
+                for (let i = 0; i < cars.length; i++) {
+                    for (let j = i + 1; j < cars.length; j++) {
+                        const a = box(cars[i]), b = box(cars[j]);
+                        if (a.x1 < b.x2 && a.x2 > b.x1 && a.y1 < b.y2 && a.y2 > b.y1) {
+                            const key = cars[i].id + "-" + cars[j].id;
+                            now.add(key);
+                            if (!touchingSet.has(key)) hud.collisions++;
+                        }
                     }
                 }
+                touchingSet = now;
             }
-            touching = now;
-        }
 
-        // ---- Update and draw cars ----
-        let lastT = performance.now(), spawnTimer = 0;
+            // --- UPDATE LOOP ---
+            function updateSimulation(dt) {
+                if (isPaused) return;
 
-        function update(dt) {
-            spawnTimer += dt;
-            if (spawnTimer > 1) { spawnTimer = 0; spawnCar(); }
-            for (const c of cars) c.action = decideTest(c);
-            for (const c of cars) applyPhysics(c, dt);
-            checkCollisions();
-            cars = cars.filter(c => {
-                if (c.s - L > SIZE) { hud.cleared++; return false; }
-                return true;
-            });
-        }
+                simTimeMs += dt * 1000;
 
-        function drawCars() {
-            for (const c of cars) {
-                const p = carPos(c);
-                ctx.save();
-                ctx.translate(p.x, p.y);
-                ctx.rotate(p.a);
-                ctx.fillStyle = COLORS[c.dir];
-                ctx.fillRect(-L / 2, -W / 2, L, W);
-                ctx.fillStyle = "#111";
-                ctx.fillRect(L / 2 - 8, -W / 2 + 2, 6, W - 4);       // windscreen (front)
-                if (c.action.action === "BRAKE") {
-                    ctx.fillStyle = "#ff3b30";
-                    ctx.fillRect(-L / 2, -W / 2, 3, W);                // brake light (rear)
+                // Car Spawning
+                spawnTimer += dt;
+                if (spawnTimer >= spawnIntervalSec) {
+                    spawnTimer = 0;
+                    spawnCar();
                 }
-                ctx.restore();
+
+                // AI Decision & Physics Update
+                for (const c of cars) c.action = decideTest(c);
+                for (const c of cars) applyPhysics(c, dt);
+
+                checkCollisions();
+
+                // Despawn Cleared Cars
+                cars = cars.filter(c => {
+                    if (c.s - L > SIZE) {
+                        hud.cleared++;
+                        // Clean up 3D Mesh
+                        const meshObj = carMeshesMap.get(c.id);
+                        if (meshObj) {
+                            scene.remove(meshObj.group);
+                            carMeshesMap.delete(c.id);
+                        }
+                        return false;
+                    }
+                    return true;
+                });
+
+                // Update 3D Car Mesh Positions and Brake Lights
+                for (const c of cars) {
+                    const p = carPos(c);
+                    const carObj = carMeshesMap.get(c.id);
+                    if (carObj) {
+                        carObj.group.position.set(p.x, 0, p.y);
+                        carObj.group.rotation.y = p.a;
+
+                        // Brake Light Emissive State
+                        if (c.action.action === "BRAKE") {
+                            carObj.brakeMaterial.color.setHex(0xff3b30);
+                            carObj.brakeMaterial.emissive.setHex(0xff3b30);
+                            carObj.brakeMaterial.emissiveIntensity = 0.8;
+                        } else {
+                            carObj.brakeMaterial.color.setHex(0x440000);
+                            carObj.brakeMaterial.emissive.setHex(0x000000);
+                            carObj.brakeMaterial.emissiveIntensity = 0;
+                        }
+                    }
+                }
+
+                // Dynamic Camera Chase View mode update
+                if (cameraMode === 'chase' && cars.length > 0) {
+                    const targetCar = cars[0];
+                    const p = carPos(targetCar);
+                    const offsetZ = Math.cos(p.a) * -70;
+                    const offsetX = Math.sin(p.a) * -70;
+                    
+                    camera.position.set(p.x + offsetX, 45, p.y + offsetZ);
+                    camera.lookAt(p.x, 10, p.y);
+                }
+
+                updateTrafficLightVisuals();
+                updateHUD();
             }
-        }// ---- Main loop ----
-        function frame(t) {
-            const dt = Math.min((t - lastT) / 1000, 0.05);
-            lastT = t;
-            update(dt);
-            drawRoad();
-            drawLights();
-            drawCars();
-            drawHUD();
-            requestAnimationFrame(frame);
-        }
-        requestAnimationFrame(frame);
+
+            function updateHUD() {
+                const colEl = document.getElementById('hud-collisions');
+                if (colEl) {
+                    colEl.innerText = hud.collisions;
+                    colEl.className = `text-base font-mono font-extrabold ${hud.collisions > 0 ? 'text-red-400' : 'text-emerald-400'}`;
+                }
+
+                const latEl = document.getElementById('hud-latency');
+                if (latEl) latEl.innerText = hud.latencyMs === null ? "--" : Math.round(hud.latencyMs) + " ms";
+
+                const clrEl = document.getElementById('hud-cleared');
+                if (clrEl) clrEl.innerText = hud.cleared;
+
+                const actEl = document.getElementById('hud-active');
+                if (actEl) actEl.innerText = `${cars.length} / ${MAX_CARS}`;
+            }
+
+            function simLoop(now) {
+                const dt = Math.min((now - lastTimestamp) / 1000, 0.05);
+                lastTimestamp = now;
+
+                updateSimulation(dt);
+
+                if (controls && controls.enabled) {
+                    controls.update();
+                }
+
+                renderer.render(scene, camera);
+                requestAnimationFrame(simLoop);
+            }
+
+            // --- UI CONTROLS & INTERACTION ---
+            function setupUIControls() {
+                // Pause / Resume Button
+                const btnPause = document.getElementById('btn-pause');
+                const textPause = document.getElementById('text-pause');
+                const iconPause = document.getElementById('icon-pause');
+
+                btnPause.addEventListener('click', () => {
+                    isPaused = !isPaused;
+                    if (isPaused) {
+                        textPause.innerText = "RESUME";
+                        iconPause.className = "fa-solid fa-play";
+                        btnPause.classList.add('bg-emerald-600/30', 'border-emerald-500/40');
+                        btnPause.classList.remove('bg-blue-600/30', 'border-blue-500/40');
+                    } else {
+                        textPause.innerText = "PAUSE";
+                        iconPause.className = "fa-solid fa-pause";
+                        btnPause.classList.remove('bg-emerald-600/30', 'border-emerald-500/40');
+                        btnPause.classList.add('bg-blue-600/30', 'border-blue-500/40');
+                    }
+                });
+
+                // Reset Button
+                document.getElementById('btn-reset').addEventListener('click', () => {
+                    // Despawn all cars
+                    cars.forEach(c => {
+                        const carObj = carMeshesMap.get(c.id);
+                        if (carObj) scene.remove(carObj.group);
+                    });
+                    cars = [];
+                    carMeshesMap.clear();
+                    hud.collisions = 0;
+                    hud.cleared = 0;
+                    simTimeMs = 0;
+                    touchingSet.clear();
+                    updateHUD();
+                });
+
+                // Spawn Car Button
+                document.getElementById('btn-spawn').addEventListener('click', () => {
+                    spawnCar();
+                });
+
+                // Sliders
+                const sliderSpawn = document.getElementById('slider-spawn');
+                const labelSpawn = document.getElementById('label-spawn-rate');
+                sliderSpawn.addEventListener('input', (e) => {
+                    spawnIntervalSec = parseFloat(e.target.value);
+                    labelSpawn.innerText = `${spawnIntervalSec.toFixed(1)}s`;
+                });
+
+                const sliderCycle = document.getElementById('slider-cycle');
+                const labelCycle = document.getElementById('label-cycle-speed');
+                sliderCycle.addEventListener('input', (e) => {
+                    cycleSpeedMultiplier = parseFloat(e.target.value);
+                    labelCycle.innerText = `${cycleSpeedMultiplier.toFixed(2)}x`;
+                });
+
+                // Camera Preset Buttons
+                document.getElementById('cam-perspective').addEventListener('click', () => setCameraPreset('perspective'));
+                document.getElementById('cam-topdown').addEventListener('click', () => setCameraPreset('topdown'));
+                document.getElementById('cam-chase').addEventListener('click', () => setCameraPreset('chase'));
+            }
+
+        })();
     </script>
 </body>
 
