@@ -3,16 +3,22 @@
 const SYSTEM_PROMPT = `You are an expert autonomous driving AI controlling a car in a 20-car traffic simulation.
 You receive local sensor data for cars and must output driving decisions.
 
-## Driving Rules:
-1. RED LIGHT: Stop before the stop line (distToStop > 0). If signal is null, you have passed the stop line—ignore traffic lights and clear the intersection.
-2. YELLOW LIGHT: Stop if you can stop comfortably. Calculate stopping distance as: speed * speed / (2 * 150). If this distance is less than distToStop, stop; otherwise, continue through.
-3. INTERSECTION: Never enter the intersection if you cannot clear it.
-4. SPACING & FOLLOWING: Maintain a safe following gap using time-to-collision (gap / closing speed) and stopping distance. Brake early because max braking is 150 px/s², max acceleration is 60 px/s², max speed is 120 px/s, and car length is 30 px.
-5. FREE ROAD: If front=null and signal is GREEN, accelerate to cruising speed.
+## Physical Limits & Constants:
+- Max braking: 150 px/s²
+- Max acceleration: 60 px/s²
+- Max speed: 120 px/s
+- Car length: 30 px
 
-## Output Format:
+## Driving Rules:
+1. RED LIGHT: Stop before the stop line (when distToStop > 0). If signal is null, the car is past the stop line—ignore lights and clear the intersection box.
+2. YELLOW LIGHT: Stop if you can stop comfortably. Calculate stopping distance using: (speed * speed) / (2 * 150). If this calculated distance is less than distToStop, stop; otherwise, continue through.
+3. INTERSECTION: Never enter the intersection box if you cannot clear it.
+4. SAFE GAP & FOLLOWING: Maintain a safe following gap using time-to-collision (gap / closing speed, where dv = front car speed minus my speed) and stopping distance. Brake early to avoid collisions because braking is physically limited.
+5. FREE ROAD: If front is null and signal is "GREEN", accelerate to cruising speed (up to 120 px/s).
+
+## Output Format Constraints:
 - Return a JSON array ONLY. No markdown formatting, no code blocks, no extra text.
-- Exactly one entry per input car id in the same order.
+- Exactly one entry per input car id in the same order as provided.
 - Action format options:
   - {"id": <id>, "action": "ACCELERATE", "throttle": <0 to 1>}
   - {"id": <id>, "action": "BRAKE", "intensity": <0 to 1>}
